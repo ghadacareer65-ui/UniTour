@@ -1,0 +1,509 @@
+<?php
+session_start();
+require_once "config.php";
+
+if(isset($_GET['lang'])){
+    $_SESSION['lang'] = $_GET['lang'];
+    header("Location: ".$_SERVER['PHP_SELF']);
+    exit();
+}
+
+$lang = $_SESSION['lang'] ?? 'ar';
+$is_ar = ($lang == 'ar');
+
+$user_name = $_SESSION['user_name'] ?? 'Guest';
+$gender    = $_SESSION['gender']    ?? 'male';
+$weighted  = floatval($_SESSION['weighted'] ?? 0);
+
+if(isset($_POST['answers'])){
+    $_SESSION['answers'] = $_POST['answers'];
+}
+
+$answers = $_SESSION['answers'] ?? [];
+
+$scores = [
+    'إداري'      => 0,
+    'شرعي'       => 0,
+    'صحة وحياة'  => 0,
+    'هندسة حاسب' => 0,
+    'عام'        => 0
+];
+
+$track_num_map = [
+    1 => 'إداري',
+    2 => 'شرعي',
+    3 => 'صحة وحياة',
+    4 => 'هندسة حاسب',
+    5 => 'عام'
+];
+
+foreach($answers as $a){
+    $track = $track_num_map[$a] ?? '';
+    if(isset($scores[$track])){
+        $scores[$track]++;
+    }
+}
+
+arsort($scores);
+$top_track_ar = array_key_first($scores);
+
+$selected_track = $_SESSION['track_selected'] ?? 'general';
+
+$track_selected_map = [
+    'tech'    => 'هندسة حاسب',
+    'health'  => 'صحة وحياة',
+    'admin'   => 'إداري',
+    'sharia'  => 'شرعي',
+    'general' => 'عام'
+];
+
+$student_track_ar = $track_selected_map[$selected_track] ?? 'عام';
+
+if ($student_track_ar != 'عام') {
+    $top_track_ar = $student_track_ar;
+} else {
+    if ($top_track_ar == 'عام') {
+        $tracks_sorted = array_keys($scores);
+        $second = $tracks_sorted[1] ?? 'عام';
+
+        if (($scores[$second] ?? 0) > 0) {
+            $top_track_ar = $second;
+        }
+    }
+}
+$interest_track_ar = array_key_first($scores);
+
+$academic_note = '';
+
+if ($student_track_ar != 'عام' && $interest_track_ar != $student_track_ar) {
+
+    $academic_note = "تشير إجاباتك إلى ميول مرتبطة بمسار أكاديمي مختلف، لذلك تم تقييد التوصيات لتتوافق مع مسارك الدراسي الحالي ومتطلبات القبول الجامعي.";
+}
+
+$track_translate_en = [
+    'هندسة حاسب' => 'Computer Engineering',
+    'صحة وحياة'  => 'Health & Life',
+    'إداري'      => 'Business Administration',
+    'شرعي'       => 'Sharia Sciences',
+    'عام'        => 'General'
+];
+
+$top_track_display = $is_ar ? $top_track_ar : ($track_translate_en[$top_track_ar] ?? $top_track_ar);
+$top_track_sql     = $top_track_ar;
+
+$gender_allowed = ($gender == "female") ? "female" : "both";
+$limit = 4;
+$universities = [];
+
+if($weighted >= 60){
+
+    $sql_unis = "SELECT u.id, u.name_ar, u.name_en,
+                        u.city_ar, u.city_en, u.logo_url,
+                        MAX(vt.tour_url) as tour_url
+                 FROM universities u
+                 INNER JOIN majors m ON u.id = m.university_id
+                 LEFT JOIN virtual_tours vt ON u.id = vt.university_id
+                 WHERE m.category = ?
+                 AND (u.gender_allowed = ? OR u.gender_allowed = 'both')
+                 GROUP BY u.id, u.name_ar, u.name_en,
+                          u.city_ar, u.city_en, u.logo_url
+                 ORDER BY CASE WHEN u.id = 5 THEN 0 ELSE 1 END, u.id
+                 LIMIT ?";
+
+    $stmt = $conn->prepare($sql_unis);
+    $stmt->bind_param("ssi", $top_track_sql, $gender_allowed, $limit);
+    $stmt->execute();
+    $db_unis = $stmt->get_result();
+
+    $rows = $db_unis->fetch_all(MYSQLI_ASSOC);
+
+    foreach($rows as $row){
+        $universities[] = [
+            'id'     => $row['id'],
+            'name'   => $is_ar ? $row['name_ar'] : $row['name_en'],
+            'city'   => $is_ar ? $row['city_ar'] : $row['city_en'],
+            'logo'   => $row['logo_url'],
+            'tour'   => $row['tour_url'] ?? '',
+            'majors' => []
+        ];
+    }
+
+    foreach($universities as $key => $u_temp){
+        $sql_maj = "SELECT name_ar, name_en FROM majors
+                    WHERE university_id = ? AND category = ?
+                    LIMIT 3";
+
+        $stmt2 = $conn->prepare($sql_maj);
+        $stmt2->bind_param("is", $u_temp['id'], $top_track_sql);
+        $stmt2->execute();
+        $maj_result = $stmt2->get_result();
+
+        while($m = $maj_result->fetch_assoc()){
+            $universities[$key]['majors'][] = $is_ar ? $m['name_ar'] : $m['name_en'];
+        }
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="<?= $lang ?>" dir="<?= $is_ar ? 'rtl' : 'ltr' ?>">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UniTour - <?= $is_ar ? 'النتائج' : 'Results' ?></title>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" rel="stylesheet">
+
+<style>
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+body{
+    font-family:'Tajawal',sans-serif;
+    background:
+        linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)),
+        url('images/index5.png') center/cover no-repeat fixed;
+    color:#fff;
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+}
+
+.nav-header{
+    position:fixed;top:16px;
+    left:0;
+    right:0;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:0 40px;
+    z-index:100;
+}
+
+.top-btn{
+    background:rgba(255,255,255,0.08);
+    backdrop-filter:blur(10px);
+    color:#fff;
+    padding:10px 18px;
+    border-radius:10px;
+    border:1px solid rgba(59,109,246,0.6);
+    text-decoration:none;
+    font-size:14px;
+    font-weight:bold;
+    transition:0.3s;
+    box-shadow:0 0 8px rgba(59,109,246,0.3);
+}
+
+.top-btn:hover{
+    background:rgba(255,255,255,0.15);
+    box-shadow:0 0 14px rgba(59,109,246,0.5);
+}
+
+.lang-toggle{
+    display:flex;
+    background:rgba(255,255,255,0.15);
+    border-radius:20px;
+    overflow:hidden;
+    border:1px solid rgba(255,255,255,0.2);
+}
+
+.lang-toggle a{
+    padding:8px 16px;
+    color:#fff;
+    text-decoration:none;
+    font-weight:bold;
+    font-size:14px;
+    border-radius:20px;
+    transition:0.3s;
+}
+
+.lang-toggle a.active{ background:#3b6df6; }
+.lang-toggle a:hover{ background:rgba(59,109,246,0.5); }
+
+.container{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding-top:80px;
+    padding-bottom:30px;
+    text-align:center;
+}
+
+.unitour-logo{
+    width:180px;
+    margin-bottom:6px;
+    filter:drop-shadow(0 4px 15px rgba(0,0,0,0.4));
+}
+
+.sub-text{
+    font-size:14px;
+    color:rgba(255,255,255,0.85);
+    margin-bottom:2px;
+}
+
+.track{
+    font-size:36px;
+    font-weight:900;
+    color:#a8c4ff;
+    margin:4px 0 10px;
+    text-shadow:0 0 20px rgba(59,109,246,0.5);
+}
+
+.badges{
+    display:flex;
+    justify-content:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-bottom:10px;
+}
+
+.ml-badge{
+    background:rgba(59,109,246,0.2);
+    border:1px solid #3b6df6;
+    color:#fff;
+    padding:6px 14px;
+    border-radius:20px;
+    font-size:12px;
+}
+
+.weighted-badge{
+    background:rgba(255,255,255,0.1);
+    border:1px solid rgba(255,255,255,0.3);
+    color:#fff;
+    padding:6px 14px;
+    border-radius:20px;
+    font-size:12px;
+}
+
+.section-title{
+    font-size:16px;
+    font-weight:700;
+    color:#fff;
+    margin-bottom:12px;
+}
+
+.cards{
+    display:grid;
+    grid-template-columns:repeat(2, 1fr);
+    gap:16px;
+    padding:0 40px;
+    width:100%;
+    max-width:860px;
+    margin:auto;
+}
+
+.result-card{
+    background:rgba(255,255,255,0.96);
+    color:#222;
+    border-radius:18px;
+    text-align:center;
+    box-shadow:0 8px 25px rgba(0,0,0,0.3);
+    overflow:hidden;
+    display:flex;
+    flex-direction:column;
+    transition:transform 0.3s;
+}
+
+.result-card:hover{ transform:translateY(-4px); }
+
+.card-body{
+    padding:12px 12px 8px;
+    flex:1;
+}
+
+.uni-logo{
+    width:100%;
+    height:100px;
+    object-fit:contain;
+    padding:0 8px;
+    margin-bottom:8px;
+}
+
+.result-card h3{
+    font-size:15px;
+    font-weight:700;
+    margin-bottom:4px;
+    color:#111;
+}
+
+.result-card p{
+    font-size:12px;
+    color:#777;
+    margin-bottom:6px;
+}
+
+.majors-title{
+    font-size:11px;
+    color:#3b6df6;
+    font-weight:700;
+    margin-bottom:5px;
+}
+
+.majors-wrap{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:5px;
+    background:#eef3ff;
+    border-radius:8px;
+    padding:6px;
+    margin:0 4px 6px;
+}
+
+.major{
+    background:#5d8dee;
+    color:#fff;
+    padding:4px 10px;
+    border-radius:20px;
+    font-size:11px;
+    font-weight:600;
+}
+
+.btn-tour{
+    display:block;
+    width:100%;
+    padding:11px;
+    background:linear-gradient(135deg,#5b8dee,#89b4ff);
+    color:#fff;
+    text-decoration:none;
+    font-weight:bold;
+    font-size:13px;
+    font-family:'Tajawal',sans-serif;
+    transition:0.3s;
+}
+
+.btn-tour:hover{ background:linear-gradient(135deg,#4a7de0,#6fa0f0); }
+
+.no-result{
+    background:rgba(255,255,255,0.1);
+    border:1px solid rgba(255,255,255,0.2);
+    border-radius:16px;
+    padding:30px;
+    max-width:450px;
+    margin:20px auto;
+    font-size:15px;
+}
+.academic-note{
+    background: #fff8e1;
+    color: #8a6d3b;
+    padding: 14px 22px;
+    border-radius: 14px;
+
+    margin-top: 25px;
+    margin-bottom: 25px;
+
+    max-width: 850px;
+    width: 90%;
+
+    font-size: 15px;
+    line-height: 1.9;
+    text-align: center;
+
+    border: 1px solid #f0d98a;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+@media(max-width:700px){
+    .cards{
+        grid-template-columns:1fr;
+        padding:0 20px;
+    }
+
+    .nav-header{
+        padding:0 18px;
+    }
+
+    .track{
+        font-size:28px;
+    }
+
+    .unitour-logo{width:150px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="nav-header">
+    <div style="display:flex; gap:10px;">
+        <a href="clear.php" class="top-btn">↺ <?= $is_ar ? 'إعادة' : 'Retake' ?></a>
+        <a href="index1.php" class="top-btn"><?= $is_ar ? 'الرئيسية' : 'Home' ?></a>
+    </div>
+
+    <div class="lang-toggle">
+        <?php if($is_ar): ?>
+            <a href="?lang=ar" class="active">AR</a>
+            <a href="?lang=en">EN</a>
+        <?php else: ?>
+            <a href="?lang=en" class="active">EN</a>
+            <a href="?lang=ar">AR</a>
+        <?php endif; ?>
+    </div>
+</div>
+
+<div class="container">
+    <img src="images/unitour_v2.png" alt="UniTour" class="unitour-logo">
+
+    <p class="sub-text"><?= $is_ar ? 'المسار المقترح لك:' : 'Your suggested track:' ?></p>
+    <div class="track"><?= htmlspecialchars($top_track_display) ?></div>
+    <?php if (!empty($academic_note)): ?>
+    <div class="academic-note">
+        <?= $academic_note ?>
+    </div>
+    <?php endif; ?>
+
+    <div class="badges">
+        <span class="ml-badge"><?= $is_ar ? 'تم التحليل باستخدام التعلم الآلي' : 'Generated using Machine Learning' ?></span>
+        <span class="weighted-badge"><?= $is_ar ? 'نسبتك:' : 'Your score:' ?> <?= $weighted ?>%</span>
+    </div>
+
+    <?php if($weighted < 60): ?>
+
+        <div class="no-result">
+            <p><?= $is_ar ? 'نسبتك أقل من 60% — لا توجد توصيات جامعية حالياً' : 'Score below 60% — No university recommendations available' ?></p>
+        </div>
+
+    <?php elseif(!empty($universities)): ?>
+
+        <p class="section-title"><?= $is_ar ? 'الجامعات المقترحة لك' : 'Recommended Universities' ?>:</p>
+
+        <div class="cards">
+            <?php foreach($universities as $uni): ?>
+                <div class="result-card">
+                    <div class="card-body">
+                        <?php $logo = !empty($uni['logo']) ? $uni['logo'] : 'images/default.png'; ?>
+
+                        <img src="<?= htmlspecialchars($logo) ?>" class="uni-logo" alt="logo">
+
+                        <h3><?= htmlspecialchars($uni['name']) ?></h3>
+                        <p><?= htmlspecialchars($uni['city']) ?></p>
+
+                        <p class="majors-title"><?= $is_ar ? 'التخصصات المقترحة:' : 'Suggested Majors:' ?></p>
+
+                        <div class="majors-wrap">
+                            <?php foreach($uni['majors'] as $m): ?>
+                                <span class="major"><?= htmlspecialchars($m) ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+
+                    <?php if(!empty($uni['tour'])): ?>
+                        <a href="<?= htmlspecialchars($uni['tour']) ?>" target="_blank" class="btn-tour">
+                            <?= $is_ar ? 'جولة افتراضية' : 'Virtual Tour' ?>
+                        </a>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+
+    <?php else: ?>
+
+        <div class="no-result">
+            <p><?= $is_ar ? 'لا توجد جامعات متاحة لهذا المسار حالياً' : 'No universities found for this track' ?></p>
+        </div>
+
+    <?php endif; ?>
+
+</div>
+
+</body>
+</html>

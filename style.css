@@ -1,0 +1,31 @@
+/* ===== حذف القديم ===== */
+.lang-switch { display: none; }
+.lang-btn { display: none; }
+
+/* ===== التوقل الجديد ===== */
+.lang-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  display: flex !important;
+  background: rgba(255,255,255,0.15);
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.2);
+  z-index: 999;
+}
+
+.lang-toggle a {
+  display: block !important;
+  padding: 8px 16px;
+  color: #fff;
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 14px;
+  border-radius: 20px;
+  transition: 0.3s;
+}
+
+.lang-toggle a.active {
+  background: #3b6df6;
+}
