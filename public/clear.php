@@ -1,7 +1,7 @@
 <?php
 session_start();
-session_destroy();
-session_unset();
+// إعادة الاختبار: نمسح الإجابات فقط ونحافظ على النسبة والمسار
+unset($_SESSION['answers']);
 header("Location: quiz.php");
 exit();
 ?>

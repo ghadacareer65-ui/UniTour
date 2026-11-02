@@ -21,6 +21,12 @@ if(isset($_POST['school'])){
 $lang = $_SESSION['lang'] ?? 'ar';
 $is_ar = ($lang == 'ar');
 
+// لو ما فيه بيانات (نسبة/مسار) نرجعها للصفحة الرئيسية
+if (empty($_SESSION['weighted']) || empty($_SESSION['track_selected'])) {
+    header("Location: index1.php");
+    exit();
+}
+
 $weighted       = $_SESSION['weighted']       ?? 0;
 $track_selected = $_SESSION['track_selected'] ?? '';
 

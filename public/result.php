@@ -59,25 +59,73 @@ $track_selected_map = [
 
 $student_track_ar = $track_selected_map[$selected_track] ?? 'عام';
 
-if ($student_track_ar != 'عام') {
-    $top_track_ar = $student_track_ar;
-} else {
-    if ($top_track_ar == 'عام') {
+// ================== التنبؤ بالمسار عبر نموذج التعلم الآلي ==================
+// true  = قرار النموذج هو المسار المقترح
+// false = المسار اللي اختاره الطالب هو الأساس والنموذج للمقارنة فقط
+$ML_DECIDES = true;
+
+$ml_map = [
+    'admin'   => 'إداري',
+    'sharia'  => 'شرعي',
+    'health'  => 'صحة وحياة',
+    'tech'    => 'هندسة حاسب',
+    'general' => 'عام'
+];
+
+function ml_predict($url, $payload){
+    $ctx = stream_context_create([
+        'http' => [
+            'method'        => 'POST',
+            'header'        => "Content-Type: application/json\r\n",
+            'content'       => json_encode($payload),
+            'timeout'       => 8,
+            'ignore_errors' => true
+        ]
+    ]);
+    $res = @file_get_contents($url, false, $ctx);
+    if ($res === false) return null;
+    $j = json_decode($res, true);
+    return $j['predicted_track'] ?? null;
+}
+
+if (isset($_POST['answers'])) {
+    $ml_url = getenv('ML_API_URL') ?: 'http://127.0.0.1:5000';
+    $payload = [
+        'school'  => floatval($_SESSION['school']  ?? 0),
+        'qudrat'  => floatval($_SESSION['qudrat']  ?? 0),
+        'tahsili' => floatval($_SESSION['tahsili'] ?? 0),
+        'gender'  => ($gender == 'female') ? 'female' : 'male'
+    ];
+    for ($i = 1; $i <= 10; $i++) {
+        $payload['q'.$i] = (int)($answers[$i] ?? 5);
+    }
+    $_SESSION['ml_track'] = ml_predict(rtrim($ml_url, '/') . '/predict', $payload);
+}
+
+$ml_track_en = $_SESSION['ml_track'] ?? null;
+$ml_track_ar = $ml_map[$ml_track_en] ?? null;
+$ml_used     = ($ml_track_ar !== null);
+
+// المسار الناتج عن التحليل (النموذج، وإذا تعطّل نرجع لحساب الإجابات)
+$interest_track_ar = $ml_used ? $ml_track_ar : array_key_first($scores);
+
+if ($ML_DECIDES || $student_track_ar == 'عام') {
+    $top_track_ar = $interest_track_ar;
+    if ($top_track_ar == 'عام' && !$ml_used) {
         $tracks_sorted = array_keys($scores);
         $second = $tracks_sorted[1] ?? 'عام';
-
-        if (($scores[$second] ?? 0) > 0) {
-            $top_track_ar = $second;
-        }
+        if (($scores[$second] ?? 0) > 0) { $top_track_ar = $second; }
     }
+} else {
+    $top_track_ar = $student_track_ar;
 }
-$interest_track_ar = array_key_first($scores);
 
 $academic_note = '';
 
 if ($student_track_ar != 'عام' && $interest_track_ar != $student_track_ar) {
-
-    $academic_note = "تشير إجاباتك إلى ميول مرتبطة بمسار أكاديمي مختلف، لذلك تم تقييد التوصيات لتتوافق مع مسارك الدراسي الحالي ومتطلبات القبول الجامعي.";
+    $academic_note = $ML_DECIDES
+        ? "رشّح لك نموذج التعلم الآلي مساراً مختلفاً عن المسار الذي اخترته، بناءً على درجاتك وميولك. يمكنك مقارنته بمسارك الحالي."
+        : "تشير إجاباتك إلى ميول مرتبطة بمسار أكاديمي مختلف، لذلك تم تقييد التوصيات لتتوافق مع مسارك الدراسي الحالي ومتطلبات القبول الجامعي.";
 }
 
 $track_translate_en = [
@@ -90,6 +138,32 @@ $track_translate_en = [
 
 $top_track_display = $is_ar ? $top_track_ar : ($track_translate_en[$top_track_ar] ?? $top_track_ar);
 $top_track_sql     = $top_track_ar;
+
+
+// ===== حفظ النتيجة للمستخدم المسجّل (مرة واحدة عند إرسال الاختبار) =====
+if (isset($_POST['answers']) && !empty($_SESSION['user_email'])) {
+    try {
+        $st = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        $st->bind_param("s", $_SESSION['user_email']);
+        $st->execute();
+        $u = $st->get_result()->fetch_assoc();
+        if ($u) {
+            $uid = (int)$u['id'];
+            $sc  = floatval($_SESSION['school']  ?? 0);
+            $qd  = floatval($_SESSION['qudrat']  ?? 0);
+            $th  = floatval($_SESSION['tahsili'] ?? 0);
+            $gd  = $_SESSION['gender'] ?? '';
+            $tsel = $_SESSION['track_selected'] ?? '';
+            $ins = $conn->prepare("INSERT INTO user_results
+                (user_id, school, qudrat, tahsili, weighted, gender, track_selected, result_track)
+                VALUES (?,?,?,?,?,?,?,?)");
+            $ins->bind_param("iddddsss", $uid, $sc, $qd, $th, $weighted, $gd, $tsel, $top_track_ar);
+            $ins->execute();
+        }
+    } catch (Throwable $e) {
+        error_log("save result failed: " . $e->getMessage());
+    }
+}
 
 $gender_allowed = ($gender == "female") ? "female" : "both";
 $limit = 4;
@@ -107,7 +181,7 @@ if($weighted >= 60){
                  AND (u.gender_allowed = ? OR u.gender_allowed = 'both')
                  GROUP BY u.id, u.name_ar, u.name_en,
                           u.city_ar, u.city_en, u.logo_url
-                 ORDER BY CASE WHEN u.id = 5 THEN 0 ELSE 1 END, u.id
+                 ORDER BY CASE WHEN u.id = 1 THEN 0 ELSE 1 END, u.id
                  LIMIT ?";
 
     $stmt = $conn->prepare($sql_unis);
@@ -452,7 +526,7 @@ body{
     <?php endif; ?>
 
     <div class="badges">
-        <span class="ml-badge"><?= $is_ar ? 'تم التحليل باستخدام التعلم الآلي' : 'Generated using Machine Learning' ?></span>
+        <span class="ml-badge"><?= $ml_used ? ($is_ar ? 'تم التحليل باستخدام التعلم الآلي' : 'Generated using Machine Learning') : ($is_ar ? 'تم التحليل بناءً على إجاباتك' : 'Based on your answers') ?></span>
         <span class="weighted-badge"><?= $is_ar ? 'نسبتك:' : 'Your score:' ?> <?= $weighted ?>%</span>
     </div>
 

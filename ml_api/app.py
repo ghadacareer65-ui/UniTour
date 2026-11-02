@@ -8,6 +8,10 @@ model = joblib.load("model.pkl")
 gender_encoder = joblib.load("gender_encoder.pkl")
 target_encoder = joblib.load("target_encoder.pkl")
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
 @app.route("/predict", methods=["POST"])
 def predict():
     data = request.json
@@ -58,4 +62,5 @@ def predict():
     })
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    import os
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

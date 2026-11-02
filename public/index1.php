@@ -10,6 +10,18 @@ unset($_SESSION['tahsili']);
 unset($_SESSION['weighted']);
 unset($_SESSION['gender']);
 unset($_SESSION['track_selected']);
+
+// ===== تعبئة آخر نتيجة محفوظة للمستخدم المسجّل =====
+$prev = [];
+if (!empty($_SESSION['user_email'])) {
+    try {
+        $st = $conn->prepare("SELECT r.* FROM user_results r JOIN users u ON u.id = r.user_id
+                              WHERE u.email = ? ORDER BY r.id DESC LIMIT 1");
+        $st->bind_param("s", $_SESSION['user_email']);
+        $st->execute();
+        $prev = $st->get_result()->fetch_assoc() ?: [];
+    } catch (Throwable $e) { $prev = []; }
+}
 if(isset($_GET['lang'])){
     $_SESSION['lang'] = $_GET['lang'];
 }
@@ -229,35 +241,35 @@ function calculateWeighted() {
 
         <input type="number" name="school" id="school_input"
                placeholder="<?= htmlspecialchars($texts['school']) ?>"
-               min="0" max="100"
+               min="0" max="100" value="<?= htmlspecialchars($prev['school'] ?? '') ?>"
                oninput="calculateWeighted()" required>
 
         <input type="number" name="qudrat" id="qudrat_input"
                placeholder="<?= htmlspecialchars($texts['qudrat']) ?>"
-               min="0" max="100"
+               min="0" max="100" value="<?= htmlspecialchars($prev['qudrat'] ?? '') ?>"
                oninput="calculateWeighted()" required>
 
         <input type="number" name="tahsili" id="tahsili_input"
                placeholder="<?= htmlspecialchars($texts['tahsili']) ?>"
-               min="0" max="100"
+               min="0" max="100" value="<?= htmlspecialchars($prev['tahsili'] ?? '') ?>"
                oninput="calculateWeighted()" required>
 
         <input type="text" name="weighted" id="weighted_input"
-               placeholder="<?= htmlspecialchars($texts['weighted']) ?>" readonly>
+               placeholder="<?= htmlspecialchars($texts['weighted']) ?>" value="<?= htmlspecialchars($prev['weighted'] ?? '') ?>" readonly>
 
         <select name="gender" required>
             <option disabled selected value=""><?= $texts['gender'] ?></option>
-            <option value="male"><?= $texts['male'] ?></option>
-            <option value="female"><?= $texts['female'] ?></option>
+            <option value="male" <?= ($prev['gender'] ?? '')=='male'?'selected':'' ?>><?= $texts['male'] ?></option>
+            <option value="female" <?= ($prev['gender'] ?? '')=='female'?'selected':'' ?>><?= $texts['female'] ?></option>
         </select>
 
         <select name="track" required>
             <option disabled selected value=""><?= $texts['track'] ?></option>
-            <option value="tech"><?= $is_ar ? "هندسة الحاسب" : "Computer Engineering" ?></option>
-            <option value="health"><?= $is_ar ? "صحة وحياة" : "Health & Life" ?></option>
-            <option value="admin"><?= $is_ar ? "إداري" : "Business" ?></option>
-            <option value="sharia"><?= $is_ar ? "شرعي" : "Sharia" ?></option>
-            <option value="general"><?= $is_ar ? "عام" : "General" ?></option>
+            <option value="tech" <?= ($prev['track_selected'] ?? '')=='tech'?'selected':'' ?>><?= $is_ar ? "هندسة الحاسب" : "Computer Engineering" ?></option>
+            <option value="health" <?= ($prev['track_selected'] ?? '')=='health'?'selected':'' ?>><?= $is_ar ? "صحة وحياة" : "Health & Life" ?></option>
+            <option value="admin" <?= ($prev['track_selected'] ?? '')=='admin'?'selected':'' ?>><?= $is_ar ? "إداري" : "Business" ?></option>
+            <option value="sharia" <?= ($prev['track_selected'] ?? '')=='sharia'?'selected':'' ?>><?= $is_ar ? "شرعي" : "Sharia" ?></option>
+            <option value="general" <?= ($prev['track_selected'] ?? '')=='general'?'selected':'' ?>><?= $is_ar ? "عام" : "General" ?></option>
         </select>
 
         <button type="submit" class="submit-btn"><?= $texts['start'] ?></button>
