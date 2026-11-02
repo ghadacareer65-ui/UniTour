@@ -62,7 +62,7 @@ body { font-family: 'Tajawal', sans-serif; }
     min-height: 100vh;
     background:
         linear-gradient(rgba(0,0,0,0.55), rgba(0,0,0,0.55)),
-        url('images/index5.png') center/cover no-repeat;
+        url('images/index5.webp') center/cover no-repeat;
     position: relative;
     display: flex;
     align-items: center;

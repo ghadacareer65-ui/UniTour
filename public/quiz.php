@@ -88,7 +88,7 @@ body{
     font-family:'Tajawal',sans-serif;
     background:
         linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)),
-        url('images/index5.png') center/cover no-repeat fixed;
+        url('images/index5.webp') center/cover no-repeat fixed;
     color:#fff;
     min-height:100vh;
 }

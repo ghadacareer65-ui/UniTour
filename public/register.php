@@ -56,7 +56,7 @@ body{ margin:0; font-family:'Tajawal',sans-serif; }
 
 .section{
     min-height:100vh;
-    background:url('images/index5.png') center/cover no-repeat;
+    background:url('images/index5.webp') center/cover no-repeat;
     position:relative;
     overflow:hidden;
 }

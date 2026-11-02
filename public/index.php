@@ -27,7 +27,7 @@ $toggle_position = ($lang == 'ar') ? 'left:20px' : 'right:20px';
         body.home {
             font-family: 'Tajawal', sans-serif;
             min-height: 100vh;
-            background-image: url('images/index5.png');
+            background-image: url('images/index5.webp');
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
