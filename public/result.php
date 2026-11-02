@@ -166,56 +166,59 @@ if (isset($_POST['answers']) && !empty($_SESSION['user_email'])) {
 }
 
 $gender_allowed = ($gender == "female") ? "female" : "both";
-$limit = 4;
 $universities = [];
 
-if($weighted >= 60){
+// ===== شروط القبول (النسبة الموزونة) لكل جامعة =====
+// min          = الحد الأدنى العام للجامعة
+// high_cats    = المسارات اللي تحتاج نسبة أعلى في هذي الجامعة
+// high_min     = الحد الأدنى لتلك المسارات
+$admission = [
+    1 => ['min' => 75, 'high_cats' => [],                          'high_min' => 75],  // القصيم
+    2 => ['min' => 85, 'high_cats' => ['صحة وحياة', 'هندسة حاسب'], 'high_min' => 95],  // الملك سعود
+    3 => ['min' => 80, 'high_cats' => [],                          'high_min' => 80],  // الأميرة نورة (عدّليها حسب شروطهم)
+    4 => ['min' => 99, 'high_cats' => [],                          'high_min' => 99],  // كاوست
+];
 
-    $sql_unis = "SELECT u.id, u.name_ar, u.name_en,
-                        u.city_ar, u.city_en, u.logo_url,
-                        MAX(vt.tour_url) as tour_url
-                 FROM universities u
-                 INNER JOIN majors m ON u.id = m.university_id
-                 LEFT JOIN virtual_tours vt ON u.id = vt.university_id
-                 WHERE m.category = ?
-                 AND (u.gender_allowed = ? OR u.gender_allowed = 'both')
-                 GROUP BY u.id, u.name_ar, u.name_en,
-                          u.city_ar, u.city_en, u.logo_url
-                 ORDER BY CASE WHEN u.id = 1 THEN 0 ELSE 1 END, u.id
-                 LIMIT ?";
+$sql_unis = "SELECT u.id, u.name_ar, u.name_en, u.city_ar, u.city_en, u.logo_url,
+                    MAX(vt.tour_url) as tour_url
+             FROM universities u
+             LEFT JOIN virtual_tours vt ON u.id = vt.university_id
+             WHERE (u.gender_allowed = ? OR u.gender_allowed = 'both')
+             GROUP BY u.id, u.name_ar, u.name_en, u.city_ar, u.city_en, u.logo_url
+             ORDER BY CASE WHEN u.id = 1 THEN 0 ELSE 1 END, u.id";
+$stmt = $conn->prepare($sql_unis);
+$stmt->bind_param("s", $gender_allowed);
+$stmt->execute();
+$rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-    $stmt = $conn->prepare($sql_unis);
-    $stmt->bind_param("ssi", $top_track_sql, $gender_allowed, $limit);
-    $stmt->execute();
-    $db_unis = $stmt->get_result();
+foreach ($rows as $row) {
+    $rule = $admission[(int)$row['id']] ?? ['min' => 60, 'high_cats' => [], 'high_min' => 60];
+    $required = in_array($top_track_sql, $rule['high_cats'], true) ? $rule['high_min'] : $rule['min'];
+    if ($weighted < $required) continue;   // نسبتك أقل من شرط القبول
 
-    $rows = $db_unis->fetch_all(MYSQLI_ASSOC);
-
-    foreach($rows as $row){
-        $universities[] = [
-            'id'     => $row['id'],
-            'name'   => $is_ar ? $row['name_ar'] : $row['name_en'],
-            'city'   => $is_ar ? $row['city_ar'] : $row['city_en'],
-            'logo'   => $row['logo_url'],
-            'tour'   => $row['tour_url'] ?? '',
-            'majors' => []
-        ];
+    $majors = [];
+    $stmt2 = $conn->prepare("SELECT name_ar, name_en FROM majors
+                             WHERE university_id = ? AND category = ? LIMIT 3");
+    $uid_tmp = (int)$row['id'];
+    $stmt2->bind_param("is", $uid_tmp, $top_track_sql);
+    $stmt2->execute();
+    $mr = $stmt2->get_result();
+    while ($m = $mr->fetch_assoc()) {
+        $majors[] = $is_ar ? $m['name_ar'] : $m['name_en'];
+    }
+    if (empty($majors)) {
+        $majors[] = $is_ar ? 'لا تتوفر تخصصات في هذا المسار حالياً' : 'No majors available for this track yet';
     }
 
-    foreach($universities as $key => $u_temp){
-        $sql_maj = "SELECT name_ar, name_en FROM majors
-                    WHERE university_id = ? AND category = ?
-                    LIMIT 3";
-
-        $stmt2 = $conn->prepare($sql_maj);
-        $stmt2->bind_param("is", $u_temp['id'], $top_track_sql);
-        $stmt2->execute();
-        $maj_result = $stmt2->get_result();
-
-        while($m = $maj_result->fetch_assoc()){
-            $universities[$key]['majors'][] = $is_ar ? $m['name_ar'] : $m['name_en'];
-        }
-    }
+    $universities[] = [
+        'id'     => $row['id'],
+        'name'   => $is_ar ? $row['name_ar'] : $row['name_en'],
+        'city'   => $is_ar ? $row['city_ar'] : $row['city_en'],
+        'logo'   => $row['logo_url'],
+        'tour'   => $row['tour_url'] ?? '',
+        'min'    => $required,
+        'majors' => $majors
+    ];
 }
 ?>
 <!DOCTYPE html>
@@ -550,6 +553,7 @@ body{
 
                         <h3><?= htmlspecialchars($uni['name']) ?></h3>
                         <p><?= htmlspecialchars($uni['city']) ?></p>
+                        <p class="majors-title"><?= $is_ar ? 'الحد الأدنى للقبول: ' : 'Minimum admission: ' ?><?= (float)$uni['min'] ?>%</p>
 
                         <p class="majors-title"><?= $is_ar ? 'التخصصات المقترحة:' : 'Suggested Majors:' ?></p>
 
@@ -572,7 +576,7 @@ body{
     <?php else: ?>
 
         <div class="no-result">
-            <p><?= $is_ar ? 'لا توجد جامعات متاحة لهذا المسار حالياً' : 'No universities found for this track' ?></p>
+            <p><?= $is_ar ? 'نسبتك الموزونة أقل من شروط القبول في الجامعات المتاحة' : 'Your weighted percentage is below the admission requirements' ?></p>
         </div>
 
     <?php endif; ?>
