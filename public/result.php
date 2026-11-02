@@ -173,7 +173,8 @@ $universities = [];
 // high_cats    = المسارات اللي تحتاج نسبة أعلى في هذي الجامعة
 // high_min     = الحد الأدنى لتلك المسارات
 $admission = [
-    1 => ['min' => 75, 'high_cats' => [],                          'high_min' => 75],  // القصيم
+    1 => ['min' => 75, 'high_cats' => [],                          'high_min' => 75],  // القصيم - عنيزة (طالبات)
+    5 => ['min' => 75, 'high_cats' => [],                          'high_min' => 75],  // القصيم - المليداء
     2 => ['min' => 85, 'high_cats' => ['صحة وحياة', 'هندسة حاسب'], 'high_min' => 95],  // الملك سعود
     3 => ['min' => 80, 'high_cats' => [],                          'high_min' => 80],  // الأميرة نورة (عدّليها حسب شروطهم)
     4 => ['min' => 99, 'high_cats' => [],                          'high_min' => 99],  // كاوست
@@ -185,7 +186,7 @@ $sql_unis = "SELECT u.id, u.name_ar, u.name_en, u.city_ar, u.city_en, u.logo_url
              LEFT JOIN virtual_tours vt ON u.id = vt.university_id
              WHERE (u.gender_allowed = ? OR u.gender_allowed = 'both')
              GROUP BY u.id, u.name_ar, u.name_en, u.city_ar, u.city_en, u.logo_url
-             ORDER BY CASE WHEN u.id = 1 THEN 0 ELSE 1 END, u.id";
+             ORDER BY CASE WHEN u.id IN (1, 5) THEN 0 ELSE 1 END, u.id";
 $stmt = $conn->prepare($sql_unis);
 $stmt->bind_param("s", $gender_allowed);
 $stmt->execute();
