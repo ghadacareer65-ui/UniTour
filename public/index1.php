@@ -1,19 +1,23 @@
 <?php
 session_start();
 require_once "config.php";
+require_once "profile_helper.php";
 
-// لايحفظ بيانات السيشن 
+// نمسح الإجابات فقط. النسبة والمسار تبقى محفوظة حتى يعدّلها المستخدم بنفسه
 unset($_SESSION['answers']);
-unset($_SESSION['school']);
-unset($_SESSION['qudrat']);
-unset($_SESSION['tahsili']);
-unset($_SESSION['weighted']);
-unset($_SESSION['gender']);
-unset($_SESSION['track_selected']);
 
-// ===== تعبئة آخر نتيجة محفوظة للمستخدم المسجّل =====
+// مصدر البيانات: الـ session ثم الكوكي ثم آخر نتيجة محفوظة في القاعدة
 $prev = [];
-if (!empty($_SESSION['user_email'])) {
+if (!empty($_SESSION['weighted'])) {
+    $prev = [
+        'school' => $_SESSION['school'] ?? '', 'qudrat' => $_SESSION['qudrat'] ?? '',
+        'tahsili' => $_SESSION['tahsili'] ?? '', 'weighted' => $_SESSION['weighted'] ?? '',
+        'gender' => $_SESSION['gender'] ?? '', 'track_selected' => $_SESSION['track_selected'] ?? ''
+    ];
+} elseif ($c = ut_cookie_profile()) {
+    $prev = $c;
+}
+if (empty($prev) && !empty($_SESSION['user_email'])) {
     try {
         $st = $conn->prepare("SELECT r.* FROM user_results r JOIN users u ON u.id = r.user_id
                               WHERE u.email = ? ORDER BY r.id DESC LIMIT 1");

@@ -1,6 +1,8 @@
 <?php
 session_start();
 require_once "config.php";
+require_once "profile_helper.php";
+ut_restore_profile();
 
 if(isset($_GET['lang'])){
     $_SESSION['lang'] = $_GET['lang'];
@@ -195,7 +197,7 @@ $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 foreach ($rows as $row) {
     $rule = $admission[(int)$row['id']] ?? ['min' => 60, 'high_cats' => [], 'high_min' => 60];
     $required = in_array($top_track_sql, $rule['high_cats'], true) ? $rule['high_min'] : $rule['min'];
-    if ($weighted < $required) continue;   // نسبتك أقل من شرط القبول
+    $eligible = ($weighted >= $required);   // هل نسبتك تحقق شرط القبول
 
     $majors = [];
     $stmt2 = $conn->prepare("SELECT name_ar, name_en FROM majors
@@ -218,9 +220,12 @@ foreach ($rows as $row) {
         'logo'   => $row['logo_url'],
         'tour'   => $row['tour_url'] ?? '',
         'min'    => $required,
+        'eligible' => $eligible,
         'majors' => $majors
     ];
 }
+// المؤهَّل أولاً، مع الحفاظ على ترتيب القصيم
+usort($universities, function($a, $b){ return ($b['eligible'] <=> $a['eligible']); });
 ?>
 <!DOCTYPE html>
 <html lang="<?= $lang ?>" dir="<?= $is_ar ? 'rtl' : 'ltr' ?>">
@@ -546,7 +551,7 @@ body{
 
         <div class="cards">
             <?php foreach($universities as $uni): ?>
-                <div class="result-card">
+                <div class="result-card" style="<?= $uni['eligible'] ? '' : 'opacity:.65' ?>">
                     <div class="card-body">
                         <?php $logo = !empty($uni['logo']) ? $uni['logo'] : 'images/default.png'; ?>
 
@@ -555,6 +560,9 @@ body{
                         <h3><?= htmlspecialchars($uni['name']) ?></h3>
                         <p><?= htmlspecialchars($uni['city']) ?></p>
                         <p class="majors-title"><?= $is_ar ? 'الحد الأدنى للقبول: ' : 'Minimum admission: ' ?><?= (float)$uni['min'] ?>%</p>
+                        <?php if(!$uni['eligible']): ?>
+                            <p class="majors-title" style="color:#d9534f;font-weight:700"><?= $is_ar ? 'نسبتك أقل من الحد الأدنى للقبول' : 'Your score is below the minimum' ?></p>
+                        <?php endif; ?>
 
                         <p class="majors-title"><?= $is_ar ? 'التخصصات المقترحة:' : 'Suggested Majors:' ?></p>
 

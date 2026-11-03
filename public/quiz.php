@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "config.php";
+require_once "profile_helper.php";
 
 if(isset($_GET['lang'])){
     $_SESSION['lang'] = $_GET['lang'];
@@ -16,7 +17,12 @@ if(isset($_POST['school'])){
     $_SESSION['gender']         = $_POST['gender'];
     $_SESSION['track_selected'] = $_POST['track'];
     $_SESSION['user_name']      = $_SESSION['user_name'] ?? 'Guest';
+    ut_save_profile([
+        'school' => $_POST['school'], 'qudrat' => $_POST['qudrat'], 'tahsili' => $_POST['tahsili'],
+        'weighted' => $_POST['weighted'], 'gender' => $_POST['gender'], 'track_selected' => $_POST['track']
+    ]);
 }
+ut_restore_profile();
 
 $lang = $_SESSION['lang'] ?? 'ar';
 $is_ar = ($lang == 'ar');
